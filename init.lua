@@ -104,6 +104,7 @@ wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
         print("wifi is connected,ip is " .. T.IP)
+        disconnected_flag = nil
         --wifi config end,send a GET
         if config_flag then
             config_flag = nil
@@ -118,8 +119,12 @@ wifi.eventmon.register(
     wifi.eventmon.STA_DISCONNECTED,
     function(T)
         print("\n\tSTA - DISCONNECTED" .. "\n\t\reason: " .. T.reason)
-        if not config_flag then
-            ledBlink(2)
+        --Set disconnected_flag to prevent repeated calls
+        if not disconnected_flag then
+            disconnected_flag = true
+            if not config_flag then
+                ledBlink(2)
+            end
         end
     end
 )

@@ -32,49 +32,6 @@ function ledBlink(type)
     )
 end
 
---wifi init
---config_flag: wifi config is running ,disconnected register don't blink
-wifi.setmode(wifi.STATION)
-wifi.sta.sleeptype(wifi.MODEM_SLEEP)
-
-wifi.eventmon.register(
-    wifi.eventmon.STA_GOT_IP,
-    function(T)
-        print("wifi is connected,ip is " .. T.IP)
-        config_flag = nil
-        ledBlink(4)
-    end
-)
-
-wifi.eventmon.register(
-    wifi.eventmon.STA_DISCONNECTED,
-    function(T)
-        print("\n\tSTA - DISCONNECTED" .. "\n\t\reason: " .. T.reason)
-        if not config_flag then
-            ledBlink(2)
-        end
-    end
-)
-
---wifi configuration
-function startConfig()
-    if wifi.getmode() == wifi.STATIONAP then
-        enduser_setup.stop()
-    end
-    config_flag = true
-    wifi.sta.clearconfig()
-    wifi.sta.autoconnect(1)
-    enduser_setup.start()
-    ledBlink()
-end
---Boot without wifi boot configuration
-do
-    local ssid = wifi.sta.getconfig()
-    if ssid == "" or ssid == nil then
-        startConfig()
-    end
-end
-
 --json decode
 function decode(str)
     local function local_decode(local_str)
@@ -136,6 +93,54 @@ function get(actionType, warningType, quantity)
         )
     end
     localGet(url)
+end
+
+--wifi init
+--config_flag: wifi config is running ,disconnected register don't blink
+wifi.setmode(wifi.STATION)
+wifi.sta.sleeptype(wifi.MODEM_SLEEP)
+
+wifi.eventmon.register(
+    wifi.eventmon.STA_GOT_IP,
+    function(T)
+        print("wifi is connected,ip is " .. T.IP)
+        --wifi config end,send a GET
+        if config_flag then
+            config_flag = nil
+            get("053", "0", "50")
+        else
+            ledBlink(4)
+        end
+    end
+)
+
+wifi.eventmon.register(
+    wifi.eventmon.STA_DISCONNECTED,
+    function(T)
+        print("\n\tSTA - DISCONNECTED" .. "\n\t\reason: " .. T.reason)
+        if not config_flag then
+            ledBlink(2)
+        end
+    end
+)
+
+--wifi configuration
+function startConfig()
+    if wifi.getmode() == wifi.STATIONAP then
+        enduser_setup.stop()
+    end
+    config_flag = true
+    wifi.sta.clearconfig()
+    wifi.sta.autoconnect(1)
+    enduser_setup.start()
+    ledBlink()
+end
+--Boot without wifi boot configuration
+do
+    local ssid = wifi.sta.getconfig()
+    if ssid == "" or ssid == nil then
+        startConfig()
+    end
 end
 
 --interrupt

@@ -96,21 +96,21 @@ function get(actionType, warningType, quantity)
 end
 
 --wifi init
---config_flag: wifi config is running ,disconnected register don't blink
+--config_running_flag: wifi config is running ,disconnected register don't blink
 wifi.setmode(wifi.STATION)
 wifi.sta.sleeptype(wifi.MODEM_SLEEP)
 
 wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
+        ledBlink(4)
         print("wifi is connected,ip is " .. T.IP)
+        last_ssid,last_pwd=wifi.sta.getconfig()
         disconnected_flag = nil
         --wifi config end,send a GET
-        if config_flag then
-            config_flag = nil
-            get("053", "0", "50")
-        else
-            ledBlink(4)
+        if config_running_flag then
+                       get("053", "0", "50")
+            config_running_flag = nil
         end
     end
 )
@@ -120,9 +120,9 @@ wifi.eventmon.register(
     function(T)
         print("\n\tSTA - DISCONNECTED" .. "\n\t\reason: " .. T.reason)
         --Set disconnected_flag to prevent repeated calls
-        if not disconnected_flag then
-            disconnected_flag = true
-            if not config_flag then
+        if not config_running_flag then
+            if not disconnected_flag then
+                disconnected_flag = true
                 ledBlink(2)
             end
         end
@@ -134,11 +134,25 @@ function startConfig()
     if wifi.getmode() == wifi.STATIONAP then
         enduser_setup.stop()
     end
-    config_flag = true
+    config_running_flag = true
     wifi.sta.clearconfig()
     wifi.sta.autoconnect(1)
     enduser_setup.start()
     ledBlink()
+    tmr.create():alarm(
+        60 * 1000,
+        tmr.ALARM_SINGLE,
+        function()
+            if config_running_flag then
+                ledBlink(4)
+                config_running_flag = nil
+                enduser_setup.stop()
+                if last_ssid ~= nil then
+                    wifi.sta.config({ssid = last_ssid, pwd = last_pwd})
+                end
+            end
+        end
+    )
 end
 --Boot without wifi boot configuration
 do

@@ -105,11 +105,11 @@ wifi.eventmon.register(
     function(T)
         ledBlink(4)
         print("wifi is connected,ip is " .. T.IP)
-        last_ssid,last_pwd=wifi.sta.getconfig()
+        last_ssid, last_pwd = wifi.sta.getconfig()
         disconnected_flag = nil
         --wifi config end,send a GET
         if config_running_flag then
-                       get("053", "0", "50")
+            get("053", "0", "50")
             config_running_flag = nil
         end
     end
@@ -131,28 +131,27 @@ wifi.eventmon.register(
 
 --wifi configuration
 function startConfig()
-    if wifi.getmode() == wifi.STATIONAP then
-        enduser_setup.stop()
-    end
-    config_running_flag = true
-    wifi.sta.clearconfig()
-    wifi.sta.autoconnect(1)
-    enduser_setup.start()
-    ledBlink()
-    tmr.create():alarm(
-        60 * 1000,
-        tmr.ALARM_SINGLE,
-        function()
-            if config_running_flag then
-                ledBlink(4)
-                config_running_flag = nil
-                enduser_setup.stop()
-                if last_ssid ~= nil then
-                    wifi.sta.config({ssid = last_ssid, pwd = last_pwd})
+    if not config_running_flag then
+        config_running_flag = true
+        wifi.sta.clearconfig()
+        wifi.sta.autoconnect(1)
+        enduser_setup.start()
+        ledBlink()
+        tmr.create():alarm(
+            60 * 1000,
+            tmr.ALARM_SINGLE,
+            function()
+                if config_running_flag then
+                    ledBlink(4)
+                    enduser_setup.stop()
+                    config_running_flag = nil
+                    if last_ssid ~= nil then
+                        wifi.sta.config({ssid = last_ssid, pwd = last_pwd})
+                    end
                 end
             end
-        end
-    )
+        )
+    end
 end
 --Boot without wifi boot configuration
 do

@@ -93,10 +93,32 @@ function get(actionType, warningType, quantity)
         )
     end
     localGet(url)
+    --8h last get again
+    lastActionType = actionType
+    lastWarningType = warningType
+    if get8AgainTmr then
+        get8AgainTmr:unregister()
+        get8AgainTmr = nil
+    end
+    againCount = 0
+    get8AgainTmr = tmr.create()
+    get8AgainTmr:alarm(
+        1000 * 60 * 60,
+        tmr.ALARM_AUTO,
+        function(timer)
+            againCount = againCount + 1
+            if againCount == 8 then
+                if lastActionType and lastWarningType then
+                    get(lastActionType, lastWarningType, "100")
+                end
+                againCount = 0
+            end
+        end
+    )
 end
 
 --wifi init
---config_running_flag: wifi config is running ,disconnected register don't blink
+--configRunningFlag: wifi config is running ,disconnected register don't blink
 wifi.setmode(wifi.STATION)
 wifi.sta.sleeptype(wifi.MODEM_SLEEP)
 
@@ -104,8 +126,6 @@ wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
         ledBlink(4)
-        --save last config
-        last_ssid, last_pwd = wifi.sta.getconfig()
         print("wifi is connected,ip is " .. T.IP)
     end
 )
@@ -115,51 +135,50 @@ wifi.eventmon.register(
     function(T)
         print("\n\tSTA - DISCONNECTED" .. "\n\t\reason: " .. T.reason)
         --Set disconnected_flag to prevent repeated calls
-        if not config_running_flag then
+        if not configRunningFlag then
             ledBlink(2)
         end
     end
 )
 
 --wifi configuration
-config_tmr = tmr.create()
-config_tmr:register(
-    60 * 1000,
-    tmr.ALARM_SINGLE,
-    function()
-        print("after 60s....")
-        if config_running_flag then
-            ledBlink(4)
-            config_running_flag = nil
-            enduser_setup.stop()
-            if last_ssid ~= nil then
-                wifi.sta.config({ssid = last_ssid, pwd = last_pwd})
-            end
-        end
-    end
-)
 function startConfig()
-    if wifi.getmode() ~= wifi.STATIONAP and config_running_flag == nil then
-        config_running_flag = true
+    if wifi.getmode() ~= wifi.STATIONAP and configRunningFlag == nil then
+        configRunningFlag = true
+        --save last config
+        last_ssid, last_pwd = wifi.sta.getconfig()
+        --60s last reload ssid and pwd
+        configTmr = tmr.create()
+        configTmr:alarm(
+            60 * 1000,
+            tmr.ALARM_SINGLE,
+            function()
+                print("after 60s....")
+                if configRunningFlag then
+                    ledBlink(4)
+                    configRunningFlag = nil
+                    enduser_setup.stop()
+                    if last_ssid ~= nil then
+                        wifi.sta.config({ssid = last_ssid, pwd = last_pwd})
+                    end
+                end
+            end
+        )
+        --start config
         wifi.sta.clearconfig()
         wifi.sta.autoconnect(1)
         enduser_setup.start(
             function()
                 print("wifi config success")
-                config_running_flag = nil
+                configRunningFlag = nil
                 --wifi config end,send a GET
                 get("053", "0", "50")
-                if config_tmr then
-                    local running = config_tmr:state()
-                    if running then
-                        print("remove 60s tmr")
-                        config_tmr:stop()
-                    end
-                end
+                print("remove 60s tmr")
+                configTmr:unregister()
+                configTmr = nil
             end
         )
         ledBlink()
-        config_tmr:start()
     end
 end
 --Boot without wifi boot configuration
@@ -245,14 +264,5 @@ gpio.trig(
                 end
             )
         end
-    end
-)
-
---test
-tmr.create():alarm(
-    1000 * 60 * 60,
-    tmr.ALARM_AUTO,
-    function()
-        endCheck(true)
     end
 )

@@ -48,14 +48,12 @@ end
 
 --http get,sending led blink
 deviceCode = string.upper(string.gsub(wifi.sta.getmac(), ":", ""))
-function get(actionType, warningType, quantity)
+function get(actionType)
     local url =
         string.format(
-        "http://www.zhihuiyanglao.com/gateMagnetController.do?gateDeviceRecord&deviceCode=%s&actionType=%s&warningType=%s&quantity=%s",
+        "http://www.zhihuiyanglao.com/gateMagnetController.do?gateDeviceRecord&deviceCode=%s&actionType=%s&warningType=0&quantity=100",
         deviceCode,
-        actionType,
-        warningType,
-        quantity
+        actionType
     )
     local tryAgain = 0
     local function localGet(url)
@@ -95,7 +93,6 @@ function get(actionType, warningType, quantity)
     localGet(url)
     --8h last get again
     lastActionType = actionType
-    lastWarningType = warningType
     if get8AgainTmr then
         get8AgainTmr:unregister()
         get8AgainTmr = nil
@@ -103,13 +100,13 @@ function get(actionType, warningType, quantity)
     againCount = 0
     get8AgainTmr = tmr.create()
     get8AgainTmr:alarm(
-        1000 * 60 * 60,
+        1000 * 60,
         tmr.ALARM_AUTO,
         function(timer)
             againCount = againCount + 1
-            if againCount == 8 then
-                if lastActionType and lastWarningType then
-                    get(lastActionType, lastWarningType, "100")
+            if againCount >= 480 then
+                if lastActionType then
+                    get(lastActionType)
                 end
                 againCount = 0
             end
@@ -126,6 +123,7 @@ wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
         ledBlink(4)
+        get("053")
         print("wifi is connected,ip is " .. T.IP)
     end
 )
@@ -172,7 +170,6 @@ function startConfig()
                 print("wifi config success")
                 configRunningFlag = nil
                 --wifi config end,send a GET
-                get("053", "0", "50")
                 print("remove 60s tmr")
                 configTmr:unregister()
                 configTmr = nil
@@ -192,13 +189,13 @@ end
 --interrupt
 function warning()
     print("warning...")
-    get("052", "0", "100")
+    get("052")
 end
 
 function endCheck(hasWarning)
     print("check end")
     if hasWarning then
-        get("053", "0", "100")
+        get("053")
     end
 end
 

@@ -48,12 +48,13 @@ end
 
 --http get,sending led blink
 deviceCode = string.upper(string.gsub(wifi.sta.getmac(), ":", ""))
-function get(actionType)
+function get(actionType, quantity)
     local url =
         string.format(
-        "http://www.zhihuiyanglao.com/gateMagnetController.do?gateDeviceRecord&deviceCode=%s&actionType=%s&warningType=0&quantity=100",
+        "http://www.zhihuiyanglao.com/gateMagnetController.do?gateDeviceRecord&deviceCode=%s&actionType=%s&warningType=0&quantity=%s",
         deviceCode,
-        actionType
+        actionType,
+        quantity
     )
     local tryAgain = 0
     local function localGet(url)
@@ -92,7 +93,6 @@ function get(actionType)
     end
     localGet(url)
     --8h last get again
-    lastActionType = actionType
     if get8AgainTmr then
         get8AgainTmr:unregister()
         get8AgainTmr = nil
@@ -104,9 +104,11 @@ function get(actionType)
         tmr.ALARM_AUTO,
         function(timer)
             againCount = againCount + 1
-            if againCount >= 480 then
-                if lastActionType then
-                    get(lastActionType)
+            if againCount >= 60 then
+                if gpio.read(2) == gpio.LOW then
+                    get("052", "50")
+                else
+                    get("053", "50")
                 end
                 againCount = 0
             end
@@ -123,7 +125,7 @@ wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
         ledBlink(4)
-        get("053")
+        get("053", "50")
         print("wifi is connected,ip is " .. T.IP)
     end
 )
@@ -189,13 +191,13 @@ end
 --interrupt
 function warning()
     print("warning...")
-    get("052")
+    get("052", "100")
 end
 
 function endCheck(hasWarning)
     print("check end")
     if hasWarning then
-        get("053")
+        get("053", "100")
     end
 end
 

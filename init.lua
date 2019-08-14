@@ -106,9 +106,9 @@ function get(actionType, quantity)
             againCount = againCount + 1
             if againCount >= 60 then
                 if gpio.read(2) == gpio.LOW then
-                    get("052", "50")
-                else
                     get("053", "50")
+                else
+                    get("052", "100")
                 end
                 againCount = 0
             end
@@ -125,7 +125,11 @@ wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
         ledBlink(4)
-        get("053", "50")
+        if gpio.read(2) == gpio.LOW then
+            get("053", "50")
+        else
+            get("052", "100")
+        end
         print("wifi is connected,ip is " .. T.IP)
     end
 )

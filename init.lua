@@ -1,10 +1,19 @@
 --io:2 warning,3 key,4 led
+interPin = 2
+gpio.write(interPin, gpio.LOW)
+gpio.mode(interPin, gpio.INPUT)
+
+keyPin = 3
+gpio.write(keyPin, gpio.HIGH)
+gpio.mode(keyPin, gpio.INPUT)
+
+ledPin = 4
+gpio.write(ledPin, gpio.HIGH)
+gpio.mode(ledPin, gpio.OUTPUT)
 --led blink
 --high:light,low:black
 --type:1-short blink,2-long blink,3-blink 3,4-long light
-ledPin = 4
-gpio.mode(ledPin, gpio.OUTPUT)
-gpio.write(ledPin, gpio.HIGH)
+
 function ledBlink(type)
     type = type == nil and 1 or type
     local array = {200 * 1000, 200 * 1000}
@@ -48,6 +57,7 @@ end
 
 --http get,sending led blink
 deviceCode = string.upper(string.gsub(wifi.sta.getmac(), ":", ""))
+actionStart, actionStop, quantityNormal, quantityCycle = "052", "053", "100", "50"
 function get(actionType, quantity)
     local url =
         string.format(
@@ -92,23 +102,23 @@ function get(actionType, quantity)
         )
     end
     localGet(url)
-    --8h last get again
-    if get8AgainTmr then
-        get8AgainTmr:unregister()
-        get8AgainTmr = nil
+    --1h last get again
+    if getHourAgainTmr then
+        getHourAgainTmr:unregister()
+        getHourAgainTmr = nil
     end
     againCount = 0
-    get8AgainTmr = tmr.create()
-    get8AgainTmr:alarm(
+    getHourAgainTmr = tmr.create()
+    getHourAgainTmr:alarm(
         1000 * 60,
         tmr.ALARM_AUTO,
         function(timer)
             againCount = againCount + 1
             if againCount >= 60 then
                 if gpio.read(2) == gpio.LOW then
-                    get("053", "50")
+                    get(actionStop, quantityCycle)
                 else
-                    get("052", "100")
+                    get(actionStart, quantityNormal)
                 end
                 againCount = 0
             end
@@ -126,9 +136,9 @@ wifi.eventmon.register(
     function(T)
         ledBlink(4)
         if gpio.read(2) == gpio.LOW then
-            get("053", "50")
+            get(actionStop, quantityCycle)
         else
-            get("052", "100")
+            get(actionStart, quantityNormal)
         end
         print("wifi is connected,ip is " .. T.IP)
     end
@@ -147,7 +157,7 @@ wifi.eventmon.register(
 
 --wifi configuration
 function startConfig()
-    if wifi.getmode() ~= wifi.STATIONAP and configRunningFlag == nil then
+    if not configRunningFlag then
         configRunningFlag = true
         --save last config
         last_ssid, last_pwd = wifi.sta.getconfig()
@@ -161,7 +171,7 @@ function startConfig()
                 if configRunningFlag then
                     ledBlink(4)
                     configRunningFlag = nil
-                    enduser_setup.stop()
+                    wifi.stopsmart()
                     if last_ssid ~= nil then
                         wifi.sta.config({ssid = last_ssid, pwd = last_pwd})
                     end
@@ -169,13 +179,11 @@ function startConfig()
             end
         )
         --start config
-        wifi.sta.clearconfig()
-        wifi.sta.autoconnect(1)
-        enduser_setup.start(
+        wifi.stopsmart()
+        wifi.startsmart(
             function()
                 print("wifi config success")
                 configRunningFlag = nil
-                --wifi config end,send a GET
                 print("remove 60s tmr")
                 configTmr:unregister()
                 configTmr = nil
@@ -195,18 +203,16 @@ end
 --interrupt
 function warning()
     print("warning...")
-    get("052", "100")
+    get(actionStart, quantityNormal)
 end
 
 function endCheck(hasWarning)
     print("check end")
     if hasWarning then
-        get("053", "100")
+        get(actionStart, quantityNormal)
     end
 end
 
-interPin = 2
-gpio.mode(interPin, gpio.INPUT)
 gpio.trig(
     interPin,
     "up",
@@ -242,8 +248,6 @@ function keyPress()
     startConfig()
 end
 
-keyPin = 3
-gpio.mode(keyPin, gpio.INPUT)
 gpio.trig(
     keyPin,
     "down",

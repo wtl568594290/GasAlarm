@@ -249,7 +249,7 @@ gpio.trig(
     function()
         if not keyCheckFlag then
             keyCheckFlag = true
-            keyLongPressCount = 0
+            local keyLongPressCount = 0
             tmr:create():alarm(
                 20,
                 tmr.ALARM_AUTO,
@@ -262,7 +262,6 @@ gpio.trig(
                     else
                         timer:unregister()
                         keyCheckFlag = nil
-                        keyLongPressCount = nil
                     end
                 end
             )

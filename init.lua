@@ -1,7 +1,7 @@
 --io:2 warning,3 key,4 led
-interPin = 2
-gpio.write(interPin, gpio.LOW)
-gpio.mode(interPin, gpio.INPUT)
+warningPin = 2
+gpio.write(warningPin, gpio.LOW)
+gpio.mode(warningPin, gpio.INPUT)
 
 keyPin = 3
 gpio.write(keyPin, gpio.HIGH)
@@ -159,8 +159,6 @@ wifi.eventmon.register(
 function startConfig()
     if not configRunningFlag then
         configRunningFlag = true
-        --save last config
-        last_ssid, last_pwd = wifi.sta.getconfig()
         --60s last reload ssid and pwd
         configTmr = tmr.create()
         configTmr:alarm(
@@ -172,9 +170,6 @@ function startConfig()
                     ledBlink(4)
                     configRunningFlag = nil
                     wifi.stopsmart()
-                    if last_ssid ~= nil then
-                        wifi.sta.config({ssid = last_ssid, pwd = last_pwd})
-                    end
                 end
             end
         )
@@ -201,40 +196,40 @@ do
 end
 
 --interrupt
-function warning()
+function warningStart()
     print("warning...")
     get(actionStart, quantityNormal)
 end
 
-function endCheck(hasWarning)
-    print("check end")
-    if hasWarning then
-        get(actionStart, quantityNormal)
-    end
+function warningStop()
+    print("warning stop")
+    get(actionStop, quantityNormal)
 end
 
 gpio.trig(
-    interPin,
+    warningPin,
     "up",
     function(level)
-        if not interCheckFlag then
-            interCheckFlag = true
-            local warning_flag = false
-            local high_level_count = 0
+        if not warningFlag then
+            warningFlag = true
+            local warningCount = 0
+            local warningHas = false
             tmr:create():alarm(
                 20,
                 tmr.ALARM_AUTO,
                 function(timer)
-                    if gpio.read(interPin) == gpio.HIGH then
-                        high_level_count = high_level_count + 1
+                    if gpio.read(warningPin) == gpio.HIGH then
+                        warningCount = warningCount + 1
+                        if warningCount == 25 then
+                            warningHas = true
+                            warningStart()
+                        end
                     else
-                        interCheckFlag = nil
-                        endCheck(warning_flag)
+                        if warningHas then
+                            warningStop()
+                        end
+                        warningFlag = nil
                         timer:unregister()
-                    end
-                    if not warning_flag and high_level_count > 25 then
-                        warning_flag = true
-                        warning()
                     end
                 end
             )
@@ -254,19 +249,20 @@ gpio.trig(
     function()
         if not keyCheckFlag then
             keyCheckFlag = true
-            local key_long_press_count = 0
+            keyLongPressCount = 0
             tmr:create():alarm(
                 20,
                 tmr.ALARM_AUTO,
                 function(timer)
-                    if key_long_press_count == 150 then
-                        keyPress()
-                    end
                     if gpio.read(keyPin) == gpio.LOW then
-                        key_long_press_count = key_long_press_count + 1
+                        keyLongPressCount = keyLongPressCount + 1
+                        if keyLongPressCount == 150 then
+                            keyPress()
+                        end
                     else
                         timer:unregister()
                         keyCheckFlag = nil
+                        keyLongPressCount = nil
                     end
                 end
             )

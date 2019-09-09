@@ -1,10 +1,12 @@
 --io:2 warning,3 key,4 led
 warningPin = 2
 gpio.write(warningPin, gpio.LOW)
+gpio.mode(warningPin, gpio.INT)
 gpio.mode(warningPin, gpio.INPUT)
 
 keyPin = 3
 gpio.write(keyPin, gpio.HIGH)
+gpio.mode(keyPin, gpio.INT)
 gpio.mode(keyPin, gpio.INPUT)
 
 ledPin = 4
@@ -13,7 +15,6 @@ gpio.mode(ledPin, gpio.OUTPUT)
 --led blink
 --high:light,low:black
 --type:1-short blink,2-long blink,3-blink 3,4-long light
-
 function ledBlink(type)
     type = type == nil and 1 or type
     local array = {200 * 1000, 200 * 1000}
@@ -135,11 +136,7 @@ wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
         ledBlink(4)
-        if gpio.read(2) == gpio.LOW then
-            get(actionStop, quantityCycle)
-        else
-            get(actionStart, quantityNormal)
-        end
+        get(actionStop, quantityCycle)
         print("wifi is connected,ip is " .. T.IP)
     end
 )
@@ -160,28 +157,35 @@ function startConfig()
     if not configRunningFlag then
         configRunningFlag = true
         --60s last reload ssid and pwd
-        configTmr = tmr.create()
-        configTmr:alarm(
-            60 * 1000,
-            tmr.ALARM_SINGLE,
-            function()
-                print("after 60s....")
+        lastSsid, lastPwd = wifi.sta.getconfig()
+        local removeCount = 0
+        tmr.create():alarm(
+            1000 * 1,
+            tmr.ALARM_AUTO,
+            function(timer)
                 if configRunningFlag then
+                    removeCount = removeCount + 1
+                    if removeCount >= 60 then
+                        timer:unregister()
+                        configRunningFlag = nil
+                        print("after 60s ...")
+                        wifi.stopsmart()
+                        if lastSsid ~= nil and lastSsid ~= "" then
+                            wifi.sta.config({ssid = lastSsid, pwd = lastPwd})
+                        end
+                        ledBlink(4)
+                    end
+                else
+                    timer:unregister()
                     ledBlink(4)
-                    configRunningFlag = nil
-                    wifi.stopsmart()
                 end
             end
         )
         --start config
-        wifi.stopsmart()
         wifi.startsmart(
             function()
                 print("wifi config success")
                 configRunningFlag = nil
-                print("remove 60s tmr")
-                configTmr:unregister()
-                configTmr = nil
             end
         )
         ledBlink()

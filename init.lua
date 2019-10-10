@@ -158,7 +158,7 @@ function startConfig()
         configRunningFlag = true
         --60s last reload ssid and pwd
         lastSsid, lastPwd = wifi.sta.getconfig()
-        local removeCount = 0
+        removeCount = 0
         tmr.create():alarm(
             1000 * 1,
             tmr.ALARM_AUTO,
@@ -167,6 +167,7 @@ function startConfig()
                     removeCount = removeCount + 1
                     if removeCount >= 60 then
                         timer:unregister()
+                        removeCount = 0
                         configRunningFlag = nil
                         print("after 60s ...")
                         wifi.stopsmart()
@@ -177,6 +178,7 @@ function startConfig()
                     end
                 else
                     timer:unregister()
+                    removeCount = 0
                     ledBlink(4)
                 end
             end
@@ -200,75 +202,126 @@ do
 end
 
 --interrupt
-function warningStart()
-    print("warning...")
-    get(actionStart, quantityNormal)
-end
-
-function warningStop()
-    print("warning stop")
-    get(actionStop, quantityNormal)
-end
-
-gpio.trig(
-    warningPin,
-    "up",
-    function(level)
-        if not warningFlag then
-            warningFlag = true
-            local warningCount = 0
-            local warningHas = false
-            tmr:create():alarm(
-                20,
-                tmr.ALARM_AUTO,
-                function(timer)
-                    if gpio.read(warningPin) == gpio.HIGH then
-                        warningCount = warningCount + 1
-                        if warningCount == 25 then
-                            warningHas = true
-                            warningStart()
-                        end
-                    else
-                        if warningHas then
-                            warningStop()
-                        end
-                        warningFlag = nil
-                        timer:unregister()
-                    end
-                end
-            )
-        end
+do
+    local function warningStart()
+        print("warning...")
+        get(actionStart, quantityNormal)
     end
-)
+
+    local function warningStop()
+        print("warning stop")
+        get(actionStop, quantityNormal)
+    end
+
+    local function warningcb()
+        gpio.trig(warningPin)
+        warningCount = 0
+        warningHas = false
+        tmr:create():alarm(
+            100,
+            tmr.ALARM_AUTO,
+            function(timer)
+                if gpio.read(warningPin) == gpio.HIGH then
+                    warningCount = warningCount + 1
+                    if warningCount == 5 then
+                        warningHas = true
+                        warningStart()
+                    end
+                else
+                    timer:unregister()
+                    warningCount = 0
+                    if warningHas then
+                        warningHas = false
+                        warningStop()
+                    end
+                    gpio.trig(warningPin, "up", warningcb)
+                end
+            end
+        )
+    end
+    gpio.trig(warningPin, "up", warningcb)
+end
+-- gpio.trig(
+--     warningPin,
+--     "up",
+--     function(level)
+--         if not warningFlag then
+--             warningFlag = true
+--             local warningCount = 0
+--             local warningHas = false
+--             tmr:create():alarm(
+--                 20,
+--                 tmr.ALARM_AUTO,
+--                 function(timer)
+--                     if gpio.read(warningPin) == gpio.HIGH then
+--                         warningCount = warningCount + 1
+--                         if warningCount == 25 then
+--                             warningHas = true
+--                             warningStart()
+--                         end
+--                     else
+--                         if warningHas then
+--                             warningStop()
+--                         end
+--                         warningFlag = nil
+--                         timer:unregister()
+--                     end
+--                 end
+--             )
+--         end
+--     end
+-- )
 
 --key press
-function keyPress()
-    print("key press")
-    startConfig()
-end
-
-gpio.trig(
-    keyPin,
-    "down",
-    function()
-        if not keyCheckFlag then
-            keyCheckFlag = true
-            local keyLongPressCount = 0
-            tmr:create():alarm(
-                20,
-                tmr.ALARM_AUTO,
-                function(timer)
-                    if gpio.read(keyPin) == gpio.LOW then
-                        keyLongPressCount = keyLongPressCount + 1
-                        if keyLongPressCount == 150 then
-                            keyPress()
-                        end
-                    else
-                        timer:unregister()
-                        keyCheckFlag = nil
-                    end
-                end
-            )
-        end
+do
+    local function keyPress()
+        print("key press")
+        startConfig()
     end
-)
+    local function keyPresscb()
+        gpio.trig(keyPin)
+        keyLongPressCount = 0
+        tmr:create():alarm(
+            100,
+            tmr.ALARM_AUTO,
+            function(timer)
+                if gpio.read(keyPin) == gpio.LOW then
+                    keyLongPressCount = keyLongPressCount + 1
+                    if keyLongPressCount == 30 then
+                        keyPress()
+                    end
+                else
+                    timer:unregister()
+                    keyLongPressCount = 0
+                    gpio.trig(keyPin, "down", keyPresscb)
+                end
+            end
+        )
+    end
+    gpio.trig(keyPin, "down", keyPresscb)
+    -- gpio.trig(
+    --     keyPin,
+    --     "down",
+    --     function()
+    --         if not keyCheckFlag then
+    --             keyCheckFlag = true
+    --             local keyLongPressCount = 0
+    --             tmr:create():alarm(
+    --                 20,
+    --                 tmr.ALARM_AUTO,
+    --                 function(timer)
+    --                     if gpio.read(keyPin) == gpio.LOW then
+    --                         keyLongPressCount = keyLongPressCount + 1
+    --                         if keyLongPressCount == 150 then
+    --                             keyPress()
+    --                         end
+    --                     else
+    --                         timer:unregister()
+    --                         keyCheckFlag = nil
+    --                     end
+    --                 end
+    --             )
+    --         end
+    --     end
+    -- )
+end

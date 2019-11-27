@@ -1,17 +1,17 @@
 --io:2 warning,3 key,4 led
-warningPin = 2
-gpio.write(warningPin, gpio.LOW)
-gpio.mode(warningPin, gpio.INT)
-gpio.mode(warningPin, gpio.INPUT)
+pinWarning_G = 2
+gpio.write(pinWarning_G, gpio.LOW)
+gpio.mode(pinWarning_G, gpio.INT)
+gpio.mode(pinWarning_G, gpio.INPUT)
 
-keyPin = 3
-gpio.write(keyPin, gpio.HIGH)
-gpio.mode(keyPin, gpio.INT)
-gpio.mode(keyPin, gpio.INPUT)
+pinKey_G = 3
+gpio.write(pinKey_G, gpio.HIGH)
+gpio.mode(pinKey_G, gpio.INT)
+gpio.mode(pinKey_G, gpio.INPUT)
 
-ledPin = 4
-gpio.write(ledPin, gpio.HIGH)
-gpio.mode(ledPin, gpio.OUTPUT)
+pinLed_G = 4
+gpio.write(pinLed_G, gpio.HIGH)
+gpio.mode(pinLed_G, gpio.OUTPUT)
 --led blink
 --high:light,low:black
 --type:1-short blink,2-long blink,3-blink 3,4-long light
@@ -19,7 +19,7 @@ function ledBlink(type)
     type = type == nil and 1 or type
     local array = {200 * 1000, 200 * 1000}
     if type == 2 then
-        array = {1000 * 1000, 500 * 1000}
+        array = {500 * 1000, 1000 * 1000}
     end
     local cycle = 100
     if type == 3 then
@@ -28,7 +28,7 @@ function ledBlink(type)
         cycle = 1
     end
     gpio.serout(
-        ledPin,
+        pinLed_G,
         gpio.LOW,
         array,
         cycle,
@@ -42,286 +42,169 @@ function ledBlink(type)
     )
 end
 
---json decode
-function decode(str)
-    local function local_decode(local_str)
-        local json = sjson.decode(local_str)
-        return json
-    end
-    local status, result = pcall(local_decode, str)
-    if status then
-        return result
-    else
-        return nil
-    end
-end
-
---http get,sending led blink
-deviceCode = string.upper(string.gsub(wifi.sta.getmac(), ":", ""))
-actionStart, actionStop, quantityNormal, quantityCycle = "052", "053", "100", "50"
-function get(actionType, quantity)
-    local url =
-        string.format(
-        "http://www.zhihuiyanglao.com/gateMagnetController.do?gateDeviceRecord&deviceCode=%s&actionType=%s&warningType=0&quantity=%s",
-        deviceCode,
-        actionType,
-        quantity
-    )
-    local tryAgain = 0
-    local function localGet(url)
-        -- --blink 3 times
-        ledBlink(3)
-        http.get(
-            url,
-            nil,
-            function(code, data)
-                if code == 200 then
-                    local json = decode(data)
-                    if json then
-                        if json.isSuc == "1" then
-                            print("operate success")
-                        else
-                            print("operate failed")
-                        end
-                    else
-                        print("no json")
-                    end
-                else
-                    if tryAgain < 5 then
-                        tmr:create():alarm(
-                            1000,
-                            tmr.ALARM_SINGLE,
-                            function()
-                                localGet(url)
-                            end
-                        )
-                    end
-                    tryAgain = tryAgain + 1
-                    print("get error")
-                end
-            end
+--insert url
+deviceCode_G = string.upper(string.gsub(wifi.sta.getmac(), ":", ""))
+action_G, actionStart_G, actionStop_G, quantityNormal, quantityCycle = "053", "052", "053", 100, 50
+function insertURL(quantity)
+    if not isConfigRun_G then
+        local url =
+            string.format(
+            "http://www.zhihuiyanglao.com/gateMagnetController.do?gateDeviceRecord&deviceCode=%s&actionType=%s&warningType=0&quantity=%s",
+            deviceCode_G,
+            action_G,
+            quantity
         )
+        table.insert(urlList_G, url)
     end
-    localGet(url)
-    --1h last get again
-    if getHourAgainTmr then
-        getHourAgainTmr:unregister()
-        getHourAgainTmr = nil
-    end
-    againCount = 0
-    getHourAgainTmr = tmr.create()
-    getHourAgainTmr:alarm(
-        1000 * 60,
-        tmr.ALARM_AUTO,
-        function(timer)
-            againCount = againCount + 1
-            if againCount >= 60 then
-                if gpio.read(2) == gpio.LOW then
-                    get(actionStop, quantityCycle)
-                else
-                    get(actionStart, quantityNormal)
-                end
-                againCount = 0
-            end
-        end
-    )
 end
-
 --wifi init
---configRunningFlag: wifi config is running ,disconnected register don't blink
 wifi.setmode(wifi.STATION)
+wifi.sta.autoconnect(1)
 wifi.sta.sleeptype(wifi.MODEM_SLEEP)
 
 wifi.eventmon.register(
     wifi.eventmon.STA_GOT_IP,
     function(T)
-        ledBlink(4)
-        get(actionStop, quantityCycle)
         print("wifi is connected,ip is " .. T.IP)
+        ledBlink(4)
+        insertURL(quantityCycle)
     end
 )
 
 wifi.eventmon.register(
     wifi.eventmon.STA_DISCONNECTED,
     function(T)
-        print("\n\tSTA - DISCONNECTED" .. "\n\t\reason: " .. T.reason)
-        --Set disconnected_flag to prevent repeated calls
-        if not configRunningFlag then
+        print("STA - DISCONNECTED")
+        if not isConfigRun_G then
             ledBlink(2)
         end
     end
 )
 
---wifi configuration
-function startConfig()
-    if not configRunningFlag then
-        configRunningFlag = true
-        --60s last reload ssid and pwd
-        lastSsid, lastPwd = wifi.sta.getconfig()
-        removeCount = 0
-        tmr.create():alarm(
-            1000 * 1,
-            tmr.ALARM_AUTO,
-            function(timer)
-                if configRunningFlag then
-                    removeCount = removeCount + 1
-                    if removeCount >= 60 then
-                        timer:unregister()
-                        removeCount = 0
-                        configRunningFlag = nil
-                        print("after 60s ...")
-                        wifi.stopsmart()
-                        if lastSsid ~= nil and lastSsid ~= "" then
-                            wifi.sta.config({ssid = lastSsid, pwd = lastPwd})
-                        end
-                        ledBlink(4)
-                    end
-                else
-                    timer:unregister()
-                    removeCount = 0
-                    ledBlink(4)
+--config net
+function configNet()
+    if not isConfigRun_G then
+        isConfigRun_G = true
+        --start config
+        print("start config net...")
+        configTmr = tmr.create()
+        configTmr:register(
+            1000 * 60,
+            tmr.ALARM_SINGLE,
+            function()
+                if isConfigRun_G then
+                    print("stop config net...")
+                    ledBlink(2)
+                    wifi.stopsmart()
+                    isConfigRun_G = nil
                 end
             end
         )
-        --start config
+        configTmr:start()
         wifi.startsmart(
             function()
-                print("wifi config success")
-                configRunningFlag = nil
+                print("config net success...")
+                isConfigRun_G = nil
+                configTmr:stop()
             end
         )
         ledBlink()
     end
 end
+
 --Boot without wifi boot configuration
 do
     local ssid = wifi.sta.getconfig()
     if ssid == "" or ssid == nil then
-        startConfig()
+        configNet()
     end
 end
 
---interrupt
-do
-    local function warningStart()
-        print("warning...")
-        get(actionStart, quantityNormal)
-    end
-
-    local function warningStop()
-        print("warning stop")
-        get(actionStop, quantityNormal)
-    end
-
-    local function warningcb()
-        gpio.trig(warningPin)
-        warningCount = 0
-        warningHas = false
-        tmr:create():alarm(
-            100,
-            tmr.ALARM_AUTO,
-            function(timer)
-                if gpio.read(warningPin) == gpio.HIGH then
-                    warningCount = warningCount + 1
-                    if warningCount == 5 then
-                        warningHas = true
-                        warningStart()
+-----------------
+-- get request
+urlList_G = {}
+ready_G = true
+tryCount_G = 0
+wakeCount_G = 0
+tmr.create():alarm(
+    1000,
+    tmr.ALARM_AUTO,
+    function()
+        if #urlList_G > 0 then
+            wakeCount_G = 0
+            if ready_G then
+                tryCount_G = tryCount_G + 1
+                if tryCount_G <= 5 then
+                    if wifi.sta.status() == wifi.STA_GOTIP then
+                        ready_G = false
+                        http.get(
+                            urlList_G[1],
+                            nil,
+                            function(code)
+                                print(code)
+                                if code > 0 then
+                                    table.remove(urlList_G, 1)
+                                    tryCount_G = 0
+                                end
+                                ready_G = true
+                            end
+                        )
                     end
                 else
-                    timer:unregister()
-                    warningCount = 0
-                    if warningHas then
-                        warningHas = false
-                        warningStop()
-                    end
-                    gpio.trig(warningPin, "up", warningcb)
+                    urlList_G = {}
+                    tryCount_G = 0
                 end
             end
-        )
+        else
+            wakeCount_G = wakeCount_G + 1
+            if wakeCount_G == 60 * 60 then
+                insertURL(quantityCycle)
+            end
+        end
     end
-    gpio.trig(warningPin, "up", warningcb)
+)
+--warning interrupt
+function warningcb(level)
+    if level == gpio.HIGH then
+        print("start warning...")
+        action_G = actionStart_G
+    else
+        print("stop waring...")
+        action_G = actionStop_G
+    end
+    insertURL(quantityNormal)
+    gpio.trig(pinWarning_G, level == gpio.HIGH and "low" or "high")
 end
--- gpio.trig(
---     warningPin,
---     "up",
---     function(level)
---         if not warningFlag then
---             warningFlag = true
---             local warningCount = 0
---             local warningHas = false
---             tmr:create():alarm(
---                 20,
---                 tmr.ALARM_AUTO,
---                 function(timer)
---                     if gpio.read(warningPin) == gpio.HIGH then
---                         warningCount = warningCount + 1
---                         if warningCount == 25 then
---                             warningHas = true
---                             warningStart()
---                         end
---                     else
---                         if warningHas then
---                             warningStop()
---                         end
---                         warningFlag = nil
---                         timer:unregister()
---                     end
---                 end
---             )
---         end
---     end
--- )
+gpio.trig(pinWarning_G, "high", warningcb)
 
 --key press
 do
     local function keyPress()
-        print("key press")
-        startConfig()
+        print("key long press")
+        configNet()
     end
     local function keyPresscb()
-        gpio.trig(keyPin)
-        keyLongPressCount = 0
+        gpio.trig(pinKey_G)
+        keyCount_G = 0
         tmr:create():alarm(
             100,
             tmr.ALARM_AUTO,
             function(timer)
-                if gpio.read(keyPin) == gpio.LOW then
-                    keyLongPressCount = keyLongPressCount + 1
-                    if keyLongPressCount == 30 then
+                if gpio.read(pinKey_G) == gpio.LOW then
+                    keyCount_G = keyCount_G + 1
+                    if keyCount_G == 30 then
                         keyPress()
                     end
                 else
                     timer:unregister()
-                    keyLongPressCount = 0
-                    gpio.trig(keyPin, "down", keyPresscb)
+                    keyCount_G = 0
+                    gpio.trig(pinKey_G, "down", keyPresscb)
                 end
             end
         )
     end
-    gpio.trig(keyPin, "down", keyPresscb)
-    -- gpio.trig(
-    --     keyPin,
-    --     "down",
-    --     function()
-    --         if not keyCheckFlag then
-    --             keyCheckFlag = true
-    --             local keyLongPressCount = 0
-    --             tmr:create():alarm(
-    --                 20,
-    --                 tmr.ALARM_AUTO,
-    --                 function(timer)
-    --                     if gpio.read(keyPin) == gpio.LOW then
-    --                         keyLongPressCount = keyLongPressCount + 1
-    --                         if keyLongPressCount == 150 then
-    --                             keyPress()
-    --                         end
-    --                     else
-    --                         timer:unregister()
-    --                         keyCheckFlag = nil
-    --                     end
-    --                 end
-    --             )
-    --         end
-    --     end
-    -- )
+    gpio.trig(pinKey_G, "down", keyPresscb)
 end
+--welcome
+VERSION = 1.00
+print("ranqi version = " .. VERSION)
